@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/14 completed
+**SIs:** 7/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -57,9 +57,9 @@
   - `findOwnedVideo` faz join com o canal por `user_id`; não-dono recebe `VideoNotFoundException`.
 
 ### SI-03.7 — Endpoints de upload resumível
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 6 passing (test/videos-upload.e2e-spec.ts, MinIO + Postgres reais)
+- **Observations:** `VideosController` com 4 endpoints (initiate, sign, list parts, abort); DTOs `InitiateUploadDto`/`SignPartsDto`. `contentType` video/* validado no service (415), não no DTO. Lint do e2e segue o mesmo padrão dos e2e existentes (pendência já adiada).
 
 ### SI-03.8 — Conclusão do upload e enfileiramento (complete)
 - **Status:** pending
