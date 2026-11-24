@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 2/14 completed
+**SIs:** 3/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -21,9 +21,13 @@
   - O servico `nestjs-api` continua com `tail -f` (padrao do projeto), por isso nao responde em `GET /` via curl no container.
 
 ### SI-03.3 — Entidade Video e migration
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 7 videos (6 integração da entidade + 1 módulo), 2 migrations; suites src/videos, src/channels, src/auth, src/database: 105 passing; tsc exit 0
+- **Observations:**
+  - Colunas `size_bytes` (bigint) e `duration_seconds` (numeric) usam transformers para `number`.
+  - `cleanAllTables` apaga `videos` apenas se a tabela existir (`to_regclass`).
+  - `migrations.integration-spec.ts` não remove enums; se sobrar `videos_status_enum`, resetar o schema antes.
+  - O erro de lint em `create-test-data-source.ts` (tipo `Function`) é pré-existente.
 
 ### SI-03.4 — Exceções de domínio e gerador de slug
 - **Status:** pending
