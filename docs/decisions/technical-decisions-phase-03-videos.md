@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-11-24
 scope_description: "Backend foundation for video upload and processing: message queue, direct-to-storage upload of files up to 10GB, upload-completion signal, S3/MinIO usage, video worker (FFmpeg), unique video URL, streaming/download delivery, and video status lifecycle with failure handling."
 ---
@@ -50,7 +50,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A (BullMQ + Redis)** — official NestJS module, declarative retry/backoff, and a dedicated broker that matches the target architecture; the lost-enqueue window is a known trade-off the plan can close (e.g., enqueue after commit + re-enqueue of stale `processing` videos). Option C is a legitimate alternative if avoiding new infra outweighs the architecture fit.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -81,7 +81,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — it is the only option that both keeps the API out of the data path and fits 10GB under S3/MinIO limits, with resumability for free; Option B fails the size requirement and Option C reintroduces the load the challenge forbids.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -107,7 +107,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — the client must complete the multipart upload regardless, so the API call is the natural, verifiable and testable completion point; storage events add moving parts without removing that requirement. Abandoned drafts are handled by the lifecycle policy in TD-08.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -133,7 +133,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — keeps the storage layer provider-neutral (MinIO now, S3 later) and exposes the exact multipart/presign primitives TD-02 needs. Key layout is keyed by `videoId` (UUID), independent from the public slug (TD-06), so the slug can change without moving objects.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -164,7 +164,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — keeps a separate process (as the diagram requires) while reusing the existing domain code; `fluent-ffmpeg` is deliberately not used because it is marked deprecated on npm ("Package no longer supported"), so a thin `spawn` wrapper is safer than a dead dependency.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -195,7 +195,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — a DB-enforced UNIQUE `slug` satisfies "sem conflito" deterministically, avoids the nanoid engine/ESM mismatch with Node 25.6, and adds no dependency.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -226,7 +226,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — storage already implements Range/206 and attachment disposition; redirecting keeps the API out of the data path while preserving per-request authorization.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -256,7 +256,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — satisfies the required lifecycle with the least schema, relies on proven queue retry semantics, and idempotent processing handles duplicate or retried jobs safely; reconciliation of stuck `processing` rows is a plan-level mitigation tied to the TD-01 enqueue trade-off.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -286,7 +286,7 @@ _Inherited constraints (not reopened):_
 
 **Recommendation:** **Option A** — duration is the one value later phases need to query and display, so it is typed; remaining probe output is kept as JSONB to avoid schema churn.
 
-**Decision:** _[pending]_
+**Decision:** A
 
 ---
 
@@ -294,12 +294,12 @@ _Inherited constraints (not reopened):_
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend | Message Queue Technology | A (BullMQ + Redis) | _[pending]_ |
-| TD-02 | Cross-layer | Large-File Upload Strategy (up to 10GB) | A (S3 multipart with pre-signed part URLs) | _[pending]_ |
-| TD-03 | Backend | Upload Completion Signal | A (explicit complete endpoint) | _[pending]_ |
-| TD-04 | Backend | Storage Client, Endpoints and Key Layout | A (AWS SDK v3, two endpoints, keys by `videoId`) | _[pending]_ |
-| TD-05 | Backend | Video Worker Deployment and Media Tooling | A (same codebase, separate Compose service, `spawn` FFmpeg) | _[pending]_ |
-| TD-06 | Backend | Unique Video URL Identifier | A (random base64url slug, UNIQUE) | _[pending]_ |
-| TD-07 | Cross-layer | Streaming and Download Delivery | A (302 to pre-signed GET, storage serves Range) | _[pending]_ |
-| TD-08 | Backend | Video Status Lifecycle and Failure Handling | A (status enum + failure reason, queue retries) | _[pending]_ |
-| TD-09 | Backend | Metadata Persistence Shape and Thumbnail Frame | A (typed duration + JSONB, frame at ~10%) | _[pending]_ |
+| TD-01 | Backend | Message Queue Technology | A (BullMQ + Redis) | A |
+| TD-02 | Cross-layer | Large-File Upload Strategy (up to 10GB) | A (S3 multipart with pre-signed part URLs) | A |
+| TD-03 | Backend | Upload Completion Signal | A (explicit complete endpoint) | A |
+| TD-04 | Backend | Storage Client, Endpoints and Key Layout | A (AWS SDK v3, two endpoints, keys by `videoId`) | A |
+| TD-05 | Backend | Video Worker Deployment and Media Tooling | A (same codebase, separate Compose service, `spawn` FFmpeg) | A |
+| TD-06 | Backend | Unique Video URL Identifier | A (random base64url slug, UNIQUE) | A |
+| TD-07 | Cross-layer | Streaming and Download Delivery | A (302 to pre-signed GET, storage serves Range) | A |
+| TD-08 | Backend | Video Status Lifecycle and Failure Handling | A (status enum + failure reason, queue retries) | A |
+| TD-09 | Backend | Metadata Persistence Shape and Thumbnail Frame | A (typed duration + JSONB, frame at ~10%) | A |
