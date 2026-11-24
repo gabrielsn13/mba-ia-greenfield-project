@@ -3,7 +3,8 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-11-24T09:44:49-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T14:02:29-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T14:24:01-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-11-24T14:25:22-03:00"
   docs/phases/phase-02-auth/context.md: "2026-11-24T09:44:49-03:00"
   docs/decisions/technical-decisions-phase-02-auth.md: "2026-11-24T09:44:49-03:00"
   docs/decisions/technical-decisions-phase-01-configuracao-base.md: "2026-11-24T09:44:49-03:00"
@@ -47,14 +48,17 @@ sources_mtime:
 
 | Ref | Source | Scope | Topic | Status | Decision | Libraries |
 |-----|--------|-------|-------|--------|----------|-----------|
-| phase-03-videos/TD-01 | phase | Backend | Message Queue Technology | decided | A | — |
+| phase-03-videos/TD-01 | phase | Backend | Message Queue Technology | decided | A | @nestjs/bullmq, bullmq |
 | phase-03-videos/TD-02 | phase | Cross-layer | Large-File Upload Strategy (up to 10GB) | decided | A | — |
+|  | └─ Last revision: 2026-11-24 — upload API surface, 100 MiB parts, 10GB cap, video/* types | | | | | |
 | phase-03-videos/TD-03 | phase | Backend | Upload Completion Signal | decided | A | — |
-| phase-03-videos/TD-04 | phase | Backend | Storage Client, Endpoints and Key Layout | decided | A | — |
+| phase-03-videos/TD-04 | phase | Backend | Storage Client, Endpoints and Key Layout | decided | A | @aws-sdk/client-s3, @aws-sdk/s3-request-presigner |
 | phase-03-videos/TD-05 | phase | Backend | Video Worker Deployment and Media Tooling | decided | A | — |
 | phase-03-videos/TD-06 | phase | Backend | Unique Video URL Identifier | decided | A | — |
 | phase-03-videos/TD-07 | phase | Cross-layer | Streaming and Download Delivery | decided | A | — |
+|  | └─ Last revision: 2026-11-24 — anonymous stream/download allowed for `ready` videos only | | | | | |
 | phase-03-videos/TD-08 | phase | Backend | Video Status Lifecycle and Processing Failure Handling | decided | A | — |
+|  | └─ Last revision: 2026-11-24 — jobId=videoId, 3 attempts + backoff, repeatable reconciliation of `processing` >15 min | | | | | |
 | phase-03-videos/TD-09 | phase | Backend | Metadata Persistence Shape and Thumbnail Frame | decided | A | — |
 
 _Source files:_
@@ -80,12 +84,14 @@ _Source files:_
 ### phase-03-videos/TD-01
 
 **Recommendation:** official NestJS module, declarative retry/backoff, and a dedicated broker that matches the target architecture; the lost-enqueue window is a known trade-off the plan can close (e.g., enqueue after commit + re-enqueue of stale `processing` videos). Option C is a legitimate alternative if avoiding new infra outweighs the architecture fit.
-**Libraries:** —
+**Libraries:** @nestjs/bullmq, bullmq
 
 ### phase-03-videos/TD-02
 
 **Recommendation:** it is the only option that both keeps the API out of the data path and fits 10GB under S3/MinIO limits, with resumability for free; Option B fails the size requirement and Option C reintroduces the load the challenge forbids.
 **Libraries:** —
+**Revisions:**
+- 2026-11-24 — Resumable upload API surface, size cap and accepted types defined (validation AMB-2). Rationale: parameters fixed so the plan can specify API Contracts. Endpoint set: initiate (creates the `draft` video and the multipart upload), sign-parts (pre-signed `UploadPart` URLs for a batch of part numbers), list-parts (`ListParts`, used to resume), complete, abort. Part size 100 MiB (10GB ≈ 100 parts, far below the 10,000-part limit). The 10GB cap is validated at initiate against the declared size and re-checked with `HeadObject` at complete. Accepted content types: `video/*`.
 
 ### phase-03-videos/TD-03
 
@@ -95,7 +101,7 @@ _Source files:_
 ### phase-03-videos/TD-04
 
 **Recommendation:** keeps the storage layer provider-neutral (MinIO now, S3 later) and exposes the exact multipart/presign primitives TD-02 needs. Key layout is keyed by `videoId` (UUID), independent from the public slug (TD-06), so the slug can change without moving objects.
-**Libraries:** —
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ### phase-03-videos/TD-05
 
@@ -111,11 +117,15 @@ _Source files:_
 
 **Recommendation:** storage already implements Range/206 and attachment disposition; redirecting keeps the API out of the data path while preserving per-request authorization.
 **Libraries:** —
+**Revisions:**
+- 2026-11-24 — Stream/download authorization before Phase 04 visibility exists (validation AMB-1). Rationale: rule fixed so the plan can build the Authorization Matrix. Anonymous users may stream and download videos in `ready` status only; videos in any other status are not served (not found for non-owners). Draft/unlisted visibility rules remain Phase 04.
 
 ### phase-03-videos/TD-08
 
 **Recommendation:** satisfies the required lifecycle with the least schema, relies on proven queue retry semantics, and idempotent processing handles duplicate or retried jobs safely; reconciliation of stuck `processing` rows is a plan-level mitigation tied to the TD-01 enqueue trade-off.
 **Libraries:** —
+**Revisions:**
+- 2026-11-24 — Recovery of lost enqueue and stuck `processing` videos defined (validation AMB-3). Rationale: closes the TD-01 enqueue-after-commit window. Job id equals the videoId (idempotent enqueue), 3 attempts with exponential backoff, and a repeatable BullMQ reconciliation job that re-enqueues videos in `processing` for more than 15 minutes.
 
 ### phase-03-videos/TD-09
 
