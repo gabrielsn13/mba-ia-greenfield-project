@@ -1,0 +1,202 @@
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
+import { QueryFailedError, Repository } from 'typeorm';
+import { Channel } from '../channels/entities/channel.entity';
+import {
+  ChannelNotFoundException,
+  InvalidVideoStateException,
+  UnsupportedContentTypeException,
+  VideoNotFoundException,
+  VideoTooLargeException,
+} from '../common/exceptions/domain.exception';
+import storageConfig from '../config/storage.config';
+import { StorageService, UploadedPart } from '../storage/storage.service';
+import { videoSourceKey } from '../storage/storage.keys';
+import { Video, VideoStatus } from './entities/video.entity';
+import { generateSlug } from './slug.util';
+
+const PG_UNIQUE_VIOLATION = '23505';
+const SLUG_MAX_RETRIES = 5;
+const TITLE_MAX_LENGTH = 100;
+
+export interface InitiateUploadInput {
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  title?: string;
+}
+
+export interface InitiateUploadResult {
+  videoId: string;
+  slug: string;
+  uploadId: string;
+  partSize: number;
+  totalParts: number;
+}
+
+export interface SignedPartUrl {
+  partNumber: number;
+  url: string;
+}
+
+function isSlugConflict(err: unknown): boolean {
+  if (!(err instanceof QueryFailedError)) return false;
+  const driverError = err.driverError as { code?: string; detail?: string };
+  return (
+    driverError.code === PG_UNIQUE_VIOLATION &&
+    typeof driverError.detail === 'string' &&
+    driverError.detail.includes('slug')
+  );
+}
+
+@Injectable()
+export class VideosService {
+  constructor(
+    @InjectRepository(Video)
+    private readonly videoRepository: Repository<Video>,
+    @InjectRepository(Channel)
+    private readonly channelRepository: Repository<Channel>,
+    private readonly storageService: StorageService,
+    @Inject(storageConfig.KEY)
+    private readonly storageCfg: ConfigType<typeof storageConfig>,
+  ) {}
+
+  async initiateUpload(
+    userId: string,
+    input: InitiateUploadInput,
+  ): Promise<InitiateUploadResult> {
+    if (!input.contentType.toLowerCase().startsWith('video/')) {
+      throw new UnsupportedContentTypeException();
+    }
+    if (input.sizeBytes > this.storageCfg.maxVideoSizeBytes) {
+      throw new VideoTooLargeException();
+    }
+
+    const channel = await this.channelRepository.findOne({
+      where: { user_id: userId },
+    });
+    if (!channel) {
+      throw new ChannelNotFoundException();
+    }
+
+    const id = randomUUID();
+    const video = await this.saveDraftWithUniqueSlug({
+      id,
+      channel_id: channel.id,
+      title: (input.title ?? input.filename).slice(0, TITLE_MAX_LENGTH),
+      status: VideoStatus.DRAFT,
+      content_type: input.contentType,
+      size_bytes: input.sizeBytes,
+      source_key: videoSourceKey(id),
+    });
+
+    let uploadId: string;
+    try {
+      uploadId = await this.storageService.createMultipartUpload(
+        video.source_key,
+        video.content_type,
+      );
+    } catch (error) {
+      await this.videoRepository.delete({ id: video.id });
+      throw error;
+    }
+    await this.videoRepository.update(
+      { id: video.id },
+      { upload_id: uploadId },
+    );
+
+    const partSize = this.storageCfg.uploadPartSizeBytes;
+    return {
+      videoId: video.id,
+      slug: video.slug,
+      uploadId,
+      partSize,
+      totalParts: Math.ceil(input.sizeBytes / partSize),
+    };
+  }
+
+  async signParts(
+    userId: string,
+    videoId: string,
+    partNumbers: number[],
+  ): Promise<SignedPartUrl[]> {
+    const video = await this.findOwnedDraft(userId, videoId);
+    const totalParts = Math.ceil(
+      video.size_bytes / this.storageCfg.uploadPartSizeBytes,
+    );
+    if (partNumbers.some((n) => n < 1 || n > totalParts)) {
+      throw new BadRequestException(
+        `partNumbers must be between 1 and ${totalParts}`,
+      );
+    }
+
+    return Promise.all(
+      partNumbers.map(async (partNumber) => ({
+        partNumber,
+        url: await this.storageService.presignUploadPart(
+          video.source_key,
+          video.upload_id as string,
+          partNumber,
+        ),
+      })),
+    );
+  }
+
+  async listParts(userId: string, videoId: string): Promise<UploadedPart[]> {
+    const video = await this.findOwnedDraft(userId, videoId);
+    return this.storageService.listParts(
+      video.source_key,
+      video.upload_id as string,
+    );
+  }
+
+  async abortUpload(userId: string, videoId: string): Promise<void> {
+    const video = await this.findOwnedDraft(userId, videoId);
+    await this.storageService.abortMultipartUpload(
+      video.source_key,
+      video.upload_id as string,
+    );
+    await this.videoRepository.delete({ id: video.id });
+  }
+
+  async findOwnedVideo(userId: string, videoId: string): Promise<Video> {
+    const video = await this.videoRepository
+      .createQueryBuilder('video')
+      .innerJoin('video.channel', 'channel')
+      .where('video.id = :videoId', { videoId })
+      .andWhere('channel.user_id = :userId', { userId })
+      .getOne();
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+    return video;
+  }
+
+  private async findOwnedDraft(
+    userId: string,
+    videoId: string,
+  ): Promise<Video> {
+    const video = await this.findOwnedVideo(userId, videoId);
+    if (video.status !== VideoStatus.DRAFT || !video.upload_id) {
+      throw new InvalidVideoStateException();
+    }
+    return video;
+  }
+
+  private async saveDraftWithUniqueSlug(
+    data: Omit<Partial<Video>, 'slug'>,
+  ): Promise<Video> {
+    for (let attempt = 0; attempt <= SLUG_MAX_RETRIES; attempt++) {
+      try {
+        return await this.videoRepository.save(
+          this.videoRepository.create({ ...data, slug: generateSlug() }),
+        );
+      } catch (error) {
+        if (!isSlugConflict(error)) throw error;
+      }
+    }
+    throw new Error('Slug conflict could not be resolved after max retries');
+  }
+}

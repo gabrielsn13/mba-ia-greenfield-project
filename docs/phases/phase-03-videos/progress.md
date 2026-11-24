@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/14 completed
+**SIs:** 6/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -46,9 +46,15 @@
   - Verificados: multipart de 2 partes (5 MiB + 1 KiB), `Content-Disposition: attachment`, `206` com Range, abort e delete.
 
 ### SI-03.6 — VideosService: ciclo de upload (initiate, sign-parts, list-parts, abort)
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 24 passing em src/videos (12 unit do service, 4 integração com Postgres + MinIO reais, mais os testes anteriores); tsc exit 0; eslint limpo em src/videos
+- **Observations:**
+  - `initiateUpload` grava o rascunho (id gerado no app, `source_key` derivada) antes de criar o multipart; se o storage falhar, remove o rascunho.
+  - Retry de slug (até 5) em violação de UNIQUE na coluna `slug`.
+  - `title` default = `filename` truncado em 100 caracteres.
+  - `partNumbers` fora de 1..totalParts lança `BadRequestException` (vira `VALIDATION_ERROR` 400 pelo filtro).
+  - `VideosModule` importa `ConfigModule.forFeature(storageConfig)`, `StorageModule` e registra `Channel`.
+  - `findOwnedVideo` faz join com o canal por `user_id`; não-dono recebe `VideoNotFoundException`.
 
 ### SI-03.7 — Endpoints de upload resumível
 - **Status:** pending
