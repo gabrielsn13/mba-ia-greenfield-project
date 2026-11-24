@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 3/14 completed
+**SIs:** 4/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -30,9 +30,11 @@
   - O erro de lint em `create-test-data-source.ts` (tipo `Function`) é pré-existente.
 
 ### SI-03.4 — Exceções de domínio e gerador de slug
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 16 passing (src/common + slug.util: 6 exceções novas via it.each no filtro, 2 do slug); tsc exit 0
+- **Observations:**
+  - `generateSlug()` em `src/videos/slug.util.ts` (11 chars base64url).
+  - Exceções adicionadas em `domain.exception.ts` conforme o Error Catalog.
 
 ### SI-03.5 — StorageService (S3/MinIO)
 - **Status:** pending
