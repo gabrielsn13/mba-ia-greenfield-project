@@ -186,6 +186,10 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 
 ### SI-03.7 — Endpoints de upload resumível
 
+**Route:** POST /videos/uploads
+**Test Specs:** see `nestjs-project/specs/videos-upload.plan.md`
+**Authorization:** Authenticated (JWT)
+
 **Description:** Expõe os endpoints de iniciar, assinar partes, listar partes e abortar upload, com DTOs validados e documentação OpenAPI.
 
 **Technical actions:**
@@ -195,11 +199,7 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 3. Anotar os endpoints com `@ApiTags`, `@ApiBearerAuth`, `@ApiOperation`, `@ApiResponse` e o `ApiErrorEnvelope`
 4. Registrar `VideosController` e importar `StorageModule`/`UsersModule`/`ChannelsModule` em `VideosModule`; importar `VideosModule` em `AppModule`
 
-**Tests:**
-
-| Artifact | Layer | Test file |
-|----------|-------|-----------|
-| Endpoints de upload (autenticação, validação, autorização por dono, fluxo feliz) | E2E (supertest, MinIO real) | `test/videos-upload.e2e-spec.ts` |
+**Tests:** _(empty — E2E scenarios live in the `**Test Specs:**` spec)_
 
 **Dependencies:** SI-03.6
 
@@ -215,6 +215,10 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 
 ### SI-03.8 — Conclusão do upload e enfileiramento (complete)
 
+**Route:** POST /videos/:id/uploads/complete
+**Test Specs:** see `nestjs-project/specs/videos-upload-complete.plan.md`
+**Authorization:** Authenticated (JWT, owner)
+
 **Description:** Finaliza o multipart, verifica o objeto, move o vídeo para `processing` e publica o job na fila.
 
 **Technical actions:**
@@ -228,8 +232,7 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `VideosService.completeUpload` (estado inválido, tamanho divergente, enqueue após commit) | Unit (mock repo/storage/queue) | `src/videos/videos.service.spec.ts` |
-| `completeUpload` com Redis, MinIO e DB reais (job criado com `jobId = videoId`) | Integration | `src/videos/videos.service.integration-spec.ts` |
-| `POST /videos/:id/uploads/complete` | E2E | `test/videos-upload.e2e-spec.ts` |
+| `completeUpload` com Redis, MinIO e DB reais (job criado com `jobId = videoId`) | Integration | `src/videos/videos.service.integration-spec.ts` |
 
 **Dependencies:** SI-03.7
 
@@ -326,6 +329,10 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 
 ### SI-03.12 — Consulta, streaming e download
 
+**Route:** GET /videos/:slug/stream
+**Test Specs:** see `nestjs-project/specs/videos-playback.plan.md`
+**Authorization:** Public (optional JWT)
+
 **Description:** Endpoints de metadados, streaming e download por `slug`, com autorização (anônimo só vê `ready`; dono vê qualquer status) e redirect para URL pré-assinada.
 
 **Technical actions:**
@@ -340,8 +347,6 @@ Entregar o ciclo completo de upload e processamento de vídeos no backend: uploa
 | Artifact | Layer | Test file |
 |----------|-------|-----------|
 | `VideosService` viewer rules (dono × anônimo × status) | Unit (mock repo/storage) | `src/videos/videos.service.spec.ts` |
-| Guard opcional (token válido, inválido, ausente) | E2E | `test/videos-playback.e2e-spec.ts` |
-| Stream/download/metadados com MinIO real (Range → 206, `Content-Disposition`) | E2E | `test/videos-playback.e2e-spec.ts` |
 
 **Dependencies:** SI-03.10
 
