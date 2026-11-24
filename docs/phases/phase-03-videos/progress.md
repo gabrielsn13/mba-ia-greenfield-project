@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/14 completed
+**SIs:** 5/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -37,9 +37,13 @@
   - Exceções adicionadas em `domain.exception.ts` conforme o Error Catalog.
 
 ### SI-03.5 — StorageService (S3/MinIO)
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 8 passing (5 integração contra MinIO real, 2 chaves, 1 módulo); tsc exit 0; eslint limpo em src/storage
+- **Observations:**
+  - `StorageModule` importa `ConfigModule.forFeature(storageConfig)` para ser autocontido.
+  - `headObject` retorna `null` quando o objeto não existe (404/NotFound).
+  - O teste de integração assina contra `S3_ENDPOINT` (`S3_PUBLIC_ENDPOINT` sobrescrito no teste), pois o header Host entra na assinatura e `localhost:9000` não é alcançável de dentro do container.
+  - Verificados: multipart de 2 partes (5 MiB + 1 KiB), `Content-Disposition: attachment`, `206` com Range, abort e delete.
 
 ### SI-03.6 — VideosService: ciclo de upload (initiate, sign-parts, list-parts, abort)
 - **Status:** pending
