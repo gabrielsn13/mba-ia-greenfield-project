@@ -51,6 +51,7 @@ _Inherited constraints (not reopened):_
 **Recommendation:** **Option A (BullMQ + Redis)** — official NestJS module, declarative retry/backoff, and a dedicated broker that matches the target architecture; the lost-enqueue window is a known trade-off the plan can close (e.g., enqueue after commit + re-enqueue of stale `processing` videos). Option C is a legitimate alternative if avoiding new infra outweighs the architecture fit.
 
 **Decision:** A
+**Libraries:** @nestjs/bullmq, bullmq
 
 ---
 
@@ -82,6 +83,9 @@ _Inherited constraints (not reopened):_
 **Recommendation:** **Option A** — it is the only option that both keeps the API out of the data path and fits 10GB under S3/MinIO limits, with resumability for free; Option B fails the size requirement and Option C reintroduces the load the challenge forbids.
 
 **Decision:** A
+
+**Revisions:**
+- 2026-11-24 — Resumable upload API surface, size cap and accepted types defined (validation AMB-2). Rationale: parameters fixed so the plan can specify API Contracts. Endpoint set: initiate (creates the `draft` video and the multipart upload), sign-parts (pre-signed `UploadPart` URLs for a batch of part numbers), list-parts (`ListParts`, used to resume), complete, abort. Part size 100 MiB (10GB ≈ 100 parts, far below the 10,000-part limit). The 10GB cap is validated at initiate against the declared size and re-checked with `HeadObject` at complete. Accepted content types: `video/*`.
 
 ---
 
@@ -134,6 +138,7 @@ _Inherited constraints (not reopened):_
 **Recommendation:** **Option A** — keeps the storage layer provider-neutral (MinIO now, S3 later) and exposes the exact multipart/presign primitives TD-02 needs. Key layout is keyed by `videoId` (UUID), independent from the public slug (TD-06), so the slug can change without moving objects.
 
 **Decision:** A
+**Libraries:** @aws-sdk/client-s3, @aws-sdk/s3-request-presigner
 
 ---
 
@@ -228,6 +233,9 @@ _Inherited constraints (not reopened):_
 
 **Decision:** A
 
+**Revisions:**
+- 2026-11-24 — Stream/download authorization before Phase 04 visibility exists (validation AMB-1). Rationale: rule fixed so the plan can build the Authorization Matrix. Anonymous users may stream and download videos in `ready` status only; videos in any other status are not served (not found for non-owners). Draft/unlisted visibility rules remain Phase 04.
+
 ---
 
 ## TD-08: Video Status Lifecycle and Processing Failure Handling
@@ -257,6 +265,9 @@ _Inherited constraints (not reopened):_
 **Recommendation:** **Option A** — satisfies the required lifecycle with the least schema, relies on proven queue retry semantics, and idempotent processing handles duplicate or retried jobs safely; reconciliation of stuck `processing` rows is a plan-level mitigation tied to the TD-01 enqueue trade-off.
 
 **Decision:** A
+
+**Revisions:**
+- 2026-11-24 — Recovery of lost enqueue and stuck `processing` videos defined (validation AMB-3). Rationale: closes the TD-01 enqueue-after-commit window. Job id equals the videoId (idempotent enqueue), 3 attempts with exponential backoff, and a repeatable BullMQ reconciliation job that re-enqueues videos in `processing` for more than 15 minutes.
 
 ---
 

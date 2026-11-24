@@ -1,22 +1,27 @@
 ---
 kind: phase
 name: phase-03-videos
-status: dirty
-issue_count: 3
+status: clean
+issue_count: 0
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-11-24T14:05:13-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T14:02:29-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-11-24T14:25:27-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-24T14:24:01-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-11-24T14:25:22-03:00"
 issues:
   - id: AMB-1
-    status: open
+    status: resolved
     summary: "Who may stream/download a video before Phase 04 visibility exists"
+    resolved_by: phase-03-videos/TD-07
   - id: AMB-2
-    status: open
+    status: resolved
     summary: "Resumable upload API surface, size cap and accepted types undefined"
+    resolved_by: phase-03-videos/TD-02
   - id: AMB-3
-    status: open
+    status: resolved
     summary: "Mechanism to recover lost enqueue / stuck processing is deferred to plan"
-advisories: []
+    resolved_by: phase-03-videos/TD-08
+advisories:
+  - "Context7 MCP was unavailable; library-refs.md was built from npm registry versions and official docs (context7_id: unavailable). Re-confirm via Context7 during implementation."
 ---
 
 # phase-03-videos — Validation
@@ -29,9 +34,7 @@ _None._
 
 ### Ambiguities
 
-- **AMB-1** — Capabilities "Reprodução via streaming" and "Download do vídeo pelo usuário" plus TD-07 ("authorize, then redirect to a pre-signed GET") do not say who is authorized, nor for which statuses. Visibility (public/unlisted) and the draft -> publication flow belong to Phase 04 (Neighbors), and the platform premise is that anonymous users can watch. Explicit choice: define in plan-resolve the Phase 03 rule (e.g., owner-only for any status vs. anyone for `ready`; behavior for `draft`/`processing`/`error`; anonymous allowed or not) and record it as a revision of TD-07 so the Authorization Matrix can be built.
-- **AMB-2** — Project plan "Pontos de Atenção" requires upload to "permita retomar em caso de falha de conexão", and the challenge fixes 10GB, but TD-02 only says resumability comes "for free" from multipart. The API surface is not defined: endpoints to initiate, re-sign parts, list uploaded parts, complete and abort; part size / part count; the 10GB cap enforcement and accepted media types (video/*). Explicit choice: define in plan-resolve (revision of TD-02) the endpoint set, part-size policy, max size validation and allowed content types.
-- **AMB-3** — TD-01 and TD-08 state that the lost-enqueue window (enqueue after DB commit is not atomic) and stuck `processing` rows are "a plan-level mitigation", but no mechanism is chosen. Explicit choice: define in plan-resolve (revision of TD-08) the reconciliation strategy (e.g., scheduled re-enqueue of `processing` videos older than N minutes, idempotent by videoId) and the job id / retry parameters.
+_None._
 
 ### Missing Decisions
 
@@ -55,4 +58,6 @@ _None._
 
 ## Resolved Issues
 
-_No issues resolved yet._
+- **AMB-1** — Stream/download authorization before Phase 04. Resolved by revision of `phase-03-videos/TD-07`: anonymous users may stream/download only `ready` videos; other statuses are not served (not found for non-owners). `resolved_by: phase-03-videos/TD-07`.
+- **AMB-2** — Resumable upload API surface. Resolved by revision of `phase-03-videos/TD-02`: endpoints initiate / sign-parts / list-parts / complete / abort, 100 MiB parts, 10GB cap validated at initiate and re-checked with `HeadObject` at complete, content types `video/*`. `resolved_by: phase-03-videos/TD-02`.
+- **AMB-3** — Lost enqueue / stuck `processing`. Resolved by revision of `phase-03-videos/TD-08`: job id = videoId, 3 attempts with exponential backoff, repeatable reconciliation job re-enqueueing `processing` videos older than 15 minutes. `resolved_by: phase-03-videos/TD-08`.
