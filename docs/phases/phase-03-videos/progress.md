@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 1/14 completed
+**SIs:** 2/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -12,9 +12,13 @@
   - Lint do spec de env segue o padrão `any` pré-existente (dívida de lint adiada pelo usuário).
 
 ### SI-03.2 — Infraestrutura Docker: MinIO, Redis, FFmpeg e video-worker
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests (infra); verificado manualmente: stack sobe com healthchecks verdes, bucket `videos` criado, `ffprobe`/`ffmpeg` 5.1.9 no worker, Redis `appendonly yes`
+- **Observations:**
+  - As imagens `minio/minio` e `minio/mc` foram removidas do Docker Hub/quay.io (MinIO arquivou o projeto). Usada `insectai/minio` (fork pgsty/silo com `mc`), escolha do usuario; a API S3 e a mesma, nenhuma mudanca em TD-04 alem da imagem. Tag `latest` (versao 2026-09-16 no momento).
+  - CORS: servidor MinIO configurado via `MINIO_API_CORS_ALLOW_ORIGIN=*` (nao ha `mc cors` por bucket); o MinIO ja expoe `ETag`.
+  - Criado `src/worker.ts` minimo (`createApplicationContext`) e script `start:worker` para o container nao falhar; SI-03.10 o estende com o processador.
+  - O servico `nestjs-api` continua com `tail -f` (padrao do projeto), por isso nao responde em `GET /` via curl no container.
 
 ### SI-03.3 — Entidade Video e migration
 - **Status:** pending
