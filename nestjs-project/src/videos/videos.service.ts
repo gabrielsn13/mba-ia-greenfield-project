@@ -1,5 +1,7 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
+import type { Queue } from 'bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { QueryFailedError, Repository } from 'typeorm';
@@ -8,6 +10,7 @@ import {
   ChannelNotFoundException,
   InvalidVideoStateException,
   UnsupportedContentTypeException,
+  UploadIncompleteException,
   VideoNotFoundException,
   VideoTooLargeException,
 } from '../common/exceptions/domain.exception';
@@ -16,6 +19,12 @@ import { StorageService, UploadedPart } from '../storage/storage.service';
 import { videoSourceKey } from '../storage/storage.keys';
 import { Video, VideoStatus } from './entities/video.entity';
 import { generateSlug } from './slug.util';
+import {
+  PROCESS_VIDEO_JOB,
+  PROCESS_VIDEO_JOB_OPTIONS,
+  ProcessVideoJobData,
+  VIDEO_PROCESSING_QUEUE,
+} from './video-queue.constants';
 
 const PG_UNIQUE_VIOLATION = '23505';
 const SLUG_MAX_RETRIES = 5;
@@ -34,6 +43,12 @@ export interface InitiateUploadResult {
   uploadId: string;
   partSize: number;
   totalParts: number;
+}
+
+export interface CompleteUploadResult {
+  id: string;
+  slug: string;
+  status: VideoStatus.PROCESSING;
 }
 
 export interface SignedPartUrl {
@@ -59,6 +74,8 @@ export class VideosService {
     @InjectRepository(Channel)
     private readonly channelRepository: Repository<Channel>,
     private readonly storageService: StorageService,
+    @InjectQueue(VIDEO_PROCESSING_QUEUE)
+    private readonly videoQueue: Queue<ProcessVideoJobData>,
     @Inject(storageConfig.KEY)
     private readonly storageCfg: ConfigType<typeof storageConfig>,
   ) {}
@@ -159,6 +176,52 @@ export class VideosService {
       video.upload_id as string,
     );
     await this.videoRepository.delete({ id: video.id });
+  }
+
+  async completeUpload(
+    userId: string,
+    videoId: string,
+    parts: { partNumber: number; etag: string }[],
+  ): Promise<CompleteUploadResult> {
+    const video = await this.findOwnedDraft(userId, videoId);
+
+    try {
+      await this.storageService.completeMultipartUpload(
+        video.source_key,
+        video.upload_id as string,
+        [...parts].sort((a, b) => a.partNumber - b.partNumber),
+      );
+    } catch {
+      throw new UploadIncompleteException();
+    }
+
+    const head = await this.storageService.headObject(video.source_key);
+    if (!head || head.contentLength !== video.size_bytes) {
+      throw new UploadIncompleteException();
+    }
+
+    await this.videoRepository.manager.transaction(async (manager) => {
+      const result = await manager.update(
+        Video,
+        { id: video.id, status: VideoStatus.DRAFT },
+        { status: VideoStatus.PROCESSING, processing_started_at: new Date() },
+      );
+      if (!result.affected) {
+        throw new InvalidVideoStateException();
+      }
+    });
+
+    await this.videoQueue.add(
+      PROCESS_VIDEO_JOB,
+      { videoId: video.id } satisfies ProcessVideoJobData,
+      { ...PROCESS_VIDEO_JOB_OPTIONS, jobId: video.id },
+    );
+
+    return {
+      id: video.id,
+      slug: video.slug,
+      status: VideoStatus.PROCESSING,
+    };
   }
 
   async findOwnedVideo(userId: string, videoId: string): Promise<Video> {

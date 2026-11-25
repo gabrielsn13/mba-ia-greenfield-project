@@ -19,9 +19,11 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtPayload } from '../auth/auth.types';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
+import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { InitiateUploadDto } from './dto/initiate-upload.dto';
 import { SignPartsDto } from './dto/sign-parts.dto';
 import {
+  CompleteUploadResult,
   InitiateUploadResult,
   SignedPartUrl,
   VideosService,
@@ -118,6 +120,37 @@ export class VideosController {
   }> {
     const parts = await this.videosService.listParts(user.sub, id);
     return { parts };
+  }
+
+  @Post(':id/uploads/complete')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary: 'Complete the upload and enqueue processing',
+    description:
+      'Finishes the multipart upload, verifies the stored object size and enqueues the video for processing.',
+  })
+  @ApiResponse({ status: 202, description: 'Video is now processing' })
+  @ApiResponse({
+    status: 404,
+    description: 'VIDEO_NOT_FOUND',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'INVALID_VIDEO_STATE',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'UPLOAD_INCOMPLETE',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  completeUpload(
+    @CurrentUser() user: JwtPayload,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CompleteUploadDto,
+  ): Promise<CompleteUploadResult> {
+    return this.videosService.completeUpload(user.sub, id, dto.parts);
   }
 
   @Delete(':id/uploads')

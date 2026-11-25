@@ -4,6 +4,7 @@ import {
   ChannelNotFoundException,
   InvalidVideoStateException,
   UnsupportedContentTypeException,
+  UploadIncompleteException,
   VideoNotFoundException,
   VideoTooLargeException,
 } from '../common/exceptions/domain.exception';
@@ -27,13 +28,32 @@ describe('VideosService', () => {
       | 'presignUploadPart'
       | 'listParts'
       | 'abortMultipartUpload'
+      | 'completeMultipartUpload'
+      | 'headObject'
     >
   >;
+  let queue: { add: jest.Mock };
+  let manager: { update: jest.Mock };
+  let events: string[];
   let ownedVideo: Video | null;
 
   beforeEach(() => {
     ownedVideo = null;
+    events = [];
+    manager = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    queue = {
+      add: jest.fn(() => {
+        events.push('enqueue');
+        return Promise.resolve();
+      }),
+    };
     videoRepository = {
+      manager: {
+        transaction: jest.fn(async (cb: (m: unknown) => Promise<void>) => {
+          await cb(manager);
+          events.push('commit');
+        }),
+      },
       create: jest.fn((data) => data as Video),
       save: jest.fn((data) => Promise.resolve(data as Video)),
       update: jest.fn(),
@@ -56,11 +76,14 @@ describe('VideosService', () => {
       ),
       listParts: jest.fn().mockResolvedValue([]),
       abortMultipartUpload: jest.fn(),
+      completeMultipartUpload: jest.fn(),
+      headObject: jest.fn(),
     };
     service = new VideosService(
       videoRepository as unknown as Repository<Video>,
       channelRepository as unknown as Repository<Channel>,
       storage as unknown as StorageService,
+      queue as never,
       {
         uploadPartSizeBytes: PART_SIZE,
         maxVideoSizeBytes: MAX_SIZE,
@@ -172,6 +195,85 @@ describe('VideosService', () => {
       await expect(service.signParts('u1', 'v1', [4])).rejects.toThrow(
         'partNumbers must be between 1 and 3',
       );
+    });
+  });
+
+  describe('completeUpload', () => {
+    const parts = [
+      { partNumber: 2, etag: 'b' },
+      { partNumber: 1, etag: 'a' },
+    ];
+
+    it('rejects videos outside draft with INVALID_VIDEO_STATE', async () => {
+      ownedVideo = draft({ status: VideoStatus.PROCESSING });
+
+      await expect(
+        service.completeUpload('u1', 'v1', parts),
+      ).rejects.toBeInstanceOf(InvalidVideoStateException);
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the storage cannot complete the multipart', async () => {
+      ownedVideo = draft();
+      storage.completeMultipartUpload.mockRejectedValue(new Error('bad part'));
+
+      await expect(
+        service.completeUpload('u1', 'v1', parts),
+      ).rejects.toBeInstanceOf(UploadIncompleteException);
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the stored size differs from the declared size', async () => {
+      ownedVideo = draft();
+      storage.headObject.mockResolvedValue({ contentLength: 10 });
+
+      await expect(
+        service.completeUpload('u1', 'v1', parts),
+      ).rejects.toBeInstanceOf(UploadIncompleteException);
+      expect(manager.update).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
+    it('moves to processing and enqueues only after the transaction commits', async () => {
+      ownedVideo = draft({ slug: 'abc' });
+      storage.headObject.mockResolvedValue({
+        contentLength: PART_SIZE * 2 + 1,
+      });
+
+      const result = await service.completeUpload('u1', 'v1', parts);
+
+      expect(storage.completeMultipartUpload).toHaveBeenCalledWith(
+        'videos/v1/source',
+        'upload-1',
+        [
+          { partNumber: 1, etag: 'a' },
+          { partNumber: 2, etag: 'b' },
+        ],
+      );
+      expect(result).toEqual({
+        id: 'v1',
+        slug: 'abc',
+        status: VideoStatus.PROCESSING,
+      });
+      expect(queue.add).toHaveBeenCalledWith(
+        'process-video',
+        { videoId: 'v1' },
+        expect.objectContaining({ jobId: 'v1', attempts: 3 }),
+      );
+      expect(events).toEqual(['commit', 'enqueue']);
+    });
+
+    it('does not enqueue when the transaction fails', async () => {
+      ownedVideo = draft();
+      storage.headObject.mockResolvedValue({
+        contentLength: PART_SIZE * 2 + 1,
+      });
+      manager.update.mockResolvedValue({ affected: 0 });
+
+      await expect(
+        service.completeUpload('u1', 'v1', parts),
+      ).rejects.toBeInstanceOf(InvalidVideoStateException);
+      expect(queue.add).not.toHaveBeenCalled();
     });
   });
 
