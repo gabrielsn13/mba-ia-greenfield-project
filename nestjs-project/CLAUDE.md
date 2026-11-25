@@ -159,3 +159,39 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 ## REST Conventions
 
 This is a RESTful API. All endpoints must follow standard REST conventions — correct HTTP methods, proper status codes, plural resource nouns, and consistent URL structure. Details are enforced via rules on controller files.
+
+## Videos (Phase 03)
+
+Upload, processing, streaming and download of videos. Plan and progress: `docs/phases/phase-03-videos/`; decisions: `docs/decisions/technical-decisions-phase-03-videos.md`.
+
+### Modules
+
+- `src/videos/` — `VideosModule`: `VideosController`, `VideosService`, `Video` entity (belongs to a `Channel`), DTOs, `slug.util.ts` (unique slug, retried on collision), `video-queue.constants.ts` (queue `video-processing`, job `process-video`, 3 attempts with exponential backoff).
+- `src/storage/` — `StorageModule`/`StorageService`: S3-compatible client (MinIO locally) with multipart upload, presigned URLs and object helpers; keys in `storage.keys.ts` (`videos/<videoId>/source`, `videos/<videoId>/thumbnail.jpg`).
+- `src/video-worker/` — worker only: `VideoProcessor` (BullMQ consumer), `MediaToolsService` (ffprobe metadata + ffmpeg thumbnail), `VideoReconciliationService` (job scheduler that re-enqueues videos stuck in `processing`), `WorkerRootModule`. Bootstrapped by `src/worker.ts` (`npm run start:worker`); the API does not register the processor.
+- `OptionalAuth()` (`src/auth/decorators/optional-auth.decorator.ts`): `JwtAuthGuard` accepts a missing/invalid token as anonymous and populates `request.user` when valid.
+
+### Endpoints (`/videos`)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| POST | `/videos/uploads` | JWT | Creates `draft` video + multipart upload (201). Errors: `VIDEO_TOO_LARGE` (413, > 10 GB), `UNSUPPORTED_CONTENT_TYPE` (415), `CHANNEL_NOT_FOUND` |
+| POST | `/videos/:id/uploads/parts/sign` | JWT owner | Presigned URLs per part (200) |
+| GET | `/videos/:id/uploads/parts` | JWT owner | Lists uploaded parts (resume) |
+| POST | `/videos/:id/uploads/complete` | JWT owner | Completes multipart, status `processing`, enqueues job (202). `UPLOAD_INCOMPLETE` (422), `INVALID_VIDEO_STATE` (409) |
+| DELETE | `/videos/:id/uploads` | JWT owner | Aborts upload and removes the draft (204) |
+| GET | `/videos/:slug` | Optional | Metadata + `thumbnailUrl`; non-owners only see `ready` |
+| GET | `/videos/:slug/stream` | Optional | 302 to presigned URL (MinIO serves Range/206) |
+| GET | `/videos/:slug/download` | Optional | 302 to presigned URL with `Content-Disposition: attachment` |
+
+Non-owner or hidden resources return 404 `VIDEO_NOT_FOUND`. The file never passes through the API: the client uploads parts directly to the storage via presigned URLs.
+
+### Status lifecycle
+
+`draft` → `processing` → `ready` | `error` (`failure_reason` stores the cause after retries are exhausted).
+
+### Infra and config
+
+- Compose services: `minio`, `minio-init` (creates bucket `videos`), `redis`, `video-worker` (`npm run start:worker`), alongside `nestjs-api`, `db`, `mailpit`.
+- Env vars: `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `REDIS_HOST`, `REDIS_PORT`. Presigned URLs embed the host: `S3_PUBLIC_ENDPOINT` (host-reachable) is used for client URLs, `S3_ENDPOINT` (Compose name `minio`) for the worker; tests set `S3_PUBLIC_ENDPOINT = S3_ENDPOINT`.
+- Tests: `test/videos-upload.e2e-spec.ts`, `test/videos-playback.e2e-spec.ts`, `test/videos-flow.e2e-spec.ts` (needs the `video-worker` container running). Stop `video-worker` before running the processor/reconciliation integration specs.
