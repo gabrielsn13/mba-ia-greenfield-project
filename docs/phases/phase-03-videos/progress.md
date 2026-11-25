@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/14 completed
+**SIs:** 9/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -72,9 +72,12 @@
   - Lint do e2e segue a pendência já adiada (`any` do supertest).
 
 ### SI-03.9 — Ferramentas de mídia do worker (ffprobe/ffmpeg)
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 10 passing em src/video-worker (6 unit do parsing do ffprobe, 4 integração com ffmpeg/ffprobe reais sobre vídeo gerado via lavfi); tsc exit 0; eslint limpo
+- **Observations:**
+  - `MediaToolsService` usa `spawn` com timeout de 60s e limite de saída; falhas viram `MediaProcessingError` (erro tipado, não HTTP).
+  - `extractThumbnail` usa diretório temporário sempre removido (`finally`) e retorna o JPEG em `Buffer`, pronto para upload pelo processor (SI-03.10).
+  - ffmpeg/ffprobe já vêm instalados no `Dockerfile.dev`.
 
 ### SI-03.10 — Worker e processador da fila
 - **Status:** pending
