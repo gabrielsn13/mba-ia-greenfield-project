@@ -67,7 +67,7 @@ describe('Videos upload (e2e)', () => {
   });
 
   async function registerAndLogin(email: string): Promise<string> {
-    const mailService = (app.get(AuthService) as any).mailService;
+    const mailService = app.get(AuthService)['mailService'];
     let token = '';
     jest
       .spyOn(mailService, 'sendConfirmationEmail')
