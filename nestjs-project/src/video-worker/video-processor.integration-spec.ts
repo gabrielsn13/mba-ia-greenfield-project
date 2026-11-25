@@ -28,6 +28,7 @@ import {
 } from '../videos/video-queue.constants';
 import { MediaToolsService } from './media-tools.service';
 import { VideoProcessor } from './video-processor';
+import { VideoReconciliationService } from './video-reconciliation.service';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 const FAST_RETRY = {
@@ -79,6 +80,7 @@ describe('VideoProcessor (integration, Postgres + MinIO + Redis + ffmpeg)', () =
       providers: [
         MediaToolsService,
         VideoProcessor,
+        VideoReconciliationService,
         {
           provide: getRepositoryToken(Video),
           useValue: dataSource.getRepository(Video),

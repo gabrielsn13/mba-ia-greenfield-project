@@ -2,9 +2,16 @@ import type { Job } from 'bullmq';
 import { Repository } from 'typeorm';
 import { StorageService } from '../storage/storage.service';
 import { Video, VideoStatus } from '../videos/entities/video.entity';
-import { ProcessVideoJobData } from '../videos/video-queue.constants';
+import {
+  PROCESS_VIDEO_JOB,
+  ProcessVideoJobData,
+} from '../videos/video-queue.constants';
 import { MediaProcessingError, MediaToolsService } from './media-tools.service';
 import { VideoProcessor } from './video-processor';
+import {
+  RECONCILIATION_JOB,
+  VideoReconciliationService,
+} from './video-reconciliation.service';
 
 describe('VideoProcessor', () => {
   const videoId = 'video-1';
@@ -12,6 +19,7 @@ describe('VideoProcessor', () => {
     overrides: Partial<Job<ProcessVideoJobData>> = {},
   ): Job<ProcessVideoJobData> =>
     ({
+      name: PROCESS_VIDEO_JOB,
       data: { videoId },
       attemptsMade: 1,
       opts: { attempts: 3 },
@@ -26,6 +34,7 @@ describe('VideoProcessor', () => {
   };
   let media: { probe: jest.Mock; extractThumbnail: jest.Mock };
   let processor: VideoProcessor;
+  let reconcile: jest.Mock;
 
   const processingVideo = {
     id: videoId,
@@ -50,11 +59,20 @@ describe('VideoProcessor', () => {
         contentType: 'image/jpeg',
       }),
     };
+    reconcile = jest.fn().mockResolvedValue(0);
     processor = new VideoProcessor(
       repo as unknown as Repository<Video>,
       storage as unknown as StorageService,
       media as unknown as MediaToolsService,
+      { reconcile: reconcile } as unknown as VideoReconciliationService,
     );
+  });
+
+  it('delegates the reconciliation job without touching videos', async () => {
+    await processor.process(job({ name: RECONCILIATION_JOB }));
+
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(repo.findOneBy).not.toHaveBeenCalled();
   });
 
   it('marks a processing video as ready with metadata and thumbnail', async () => {

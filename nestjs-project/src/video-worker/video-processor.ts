@@ -8,11 +8,16 @@ import { StorageService } from '../storage/storage.service';
 import { videoThumbnailKey } from '../storage/storage.keys';
 import { Video, VideoStatus } from '../videos/entities/video.entity';
 import {
+  PROCESS_VIDEO_JOB,
   PROCESS_VIDEO_JOB_OPTIONS,
   ProcessVideoJobData,
   VIDEO_PROCESSING_QUEUE,
 } from '../videos/video-queue.constants';
 import { MediaToolsService } from './media-tools.service';
+import {
+  RECONCILIATION_JOB,
+  VideoReconciliationService,
+} from './video-reconciliation.service';
 
 const MAX_FAILURE_REASON_LENGTH = 1000;
 
@@ -25,11 +30,16 @@ export class VideoProcessor extends WorkerHost {
     private readonly videoRepository: Repository<Video>,
     private readonly storage: StorageService,
     private readonly media: MediaToolsService,
+    private readonly reconciliation: VideoReconciliationService,
   ) {
     super();
   }
 
   async process(job: Job<ProcessVideoJobData>): Promise<void> {
+    if (job.name === RECONCILIATION_JOB) {
+      await this.reconciliation.reconcile();
+      return;
+    }
     const { videoId } = job.data;
     const video = await this.videoRepository.findOneBy({ id: videoId });
     if (!video || video.status !== VideoStatus.PROCESSING) {
@@ -71,7 +81,7 @@ export class VideoProcessor extends WorkerHost {
     job: Job<ProcessVideoJobData> | undefined,
     error: Error,
   ): Promise<void> {
-    if (!job) return;
+    if (!job || job.name !== PROCESS_VIDEO_JOB) return;
     const maxAttempts = job.opts.attempts ?? PROCESS_VIDEO_JOB_OPTIONS.attempts;
     if (job.attemptsMade < maxAttempts) return;
 
