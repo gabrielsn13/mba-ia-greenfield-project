@@ -1,7 +1,7 @@
 # phase-03-videos â€” Progress
 
 **Status:** in_progress
-**SIs:** 12/14 completed
+**SIs:** 13/14 completed
 
 ### SI-03.1 â€” DependÃªncias, namespaces de config e variÃ¡veis de ambiente
 - **Status:** completed
@@ -106,10 +106,12 @@
   - `GET /videos/:slug` expoe so `ready` a nao-donos; o dono ve qualquer status. Stream/download tambem escondem `draft` (ainda nao ha objeto).
   - Stream e download respondem 302 para URL pre-assinada do MinIO (Range/206 servido pelo storage); o nome do arquivo no download e derivado de slug + content-type.
 
-### SI-03.13 â€” Fluxo end-to-end com infraestrutura real
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+### SI-03.13 — Fluxo end-to-end com infraestrutura real
+- **Status:** completed
+- **Tests:** 4 e2e passing com API + video-worker + MinIO + Redis + Postgres reais (draft -> processing -> ready com duracao/thumbnail, stream Range 206 e download; slugs distintos em duas execucoes; retomada via list-parts; abort remove draft e cancela multipart); tsc exit 0; eslint limpo
+- **Observations:**
+  - Fixture gerado com ffmpeg (lavfi testsrc, 2 s) em tempo de teste; exige o container video-worker rodando.
+  - Retomada coberta com upload de parte unica (partSize fixo de 100 MB inviabiliza multiplas partes com fixture pequeno).
 
 ### SI-03.14 â€” DocumentaÃ§Ã£o: OpenAPI e CLAUDE.md
 - **Status:** pending
