@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/14 completed
+**SIs:** 10/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -80,9 +80,15 @@
   - ffmpeg/ffprobe já vêm instalados no `Dockerfile.dev`.
 
 ### SI-03.10 — Worker e processador da fila
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 11 passing em src/video-worker novos (8 unit do `VideoProcessor`, 3 integração com Postgres + MinIO + Redis + ffmpeg reais: ready com duração/metadata/thumbnail, error após 3 tentativas, reprocesso de `ready` sem alteração); `StorageService` integração segue verde; tsc exit 0; eslint limpo
+- **Observations:**
+  - `VideoProcessor` (`@Processor('video-processing')`) só processa vídeos em `processing`; qualquer outro status é ignorado (idempotência). O update final tem guard `status = processing`.
+  - `onFailed` marca `status='error'` e `failure_reason` (truncado em 1000) somente quando `attemptsMade >= attempts`.
+  - Bootstrap mantido em `src/worker.ts` (script `start:worker` já existente), agora com `WorkerRootModule` = `AppModule` + `VideoWorkerModule`; a API não registra o processor, só o worker.
+  - `StorageService` ganhou `putObject` e `presignInternalGetObject`: o ffmpeg do worker precisa de URL assinada para o endpoint interno (`minio:9000`), pois o endpoint público (`localhost:9000`) não é alcançável de dentro do container.
+  - Mensagens de erro do ffprobe/ffmpeg têm URLs redigidas (`<url>`) para não vazar assinatura em `failure_reason`.
+  - Divergência do plano: `src/main.worker.ts` não foi criado; reaproveitado `src/worker.ts`.
 
 ### SI-03.11 — Reconciliação de vídeos presos em `processing`
 - **Status:** pending

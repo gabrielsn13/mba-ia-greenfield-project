@@ -8,6 +8,7 @@ import {
   GetObjectCommand,
   HeadObjectCommand,
   ListPartsCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -166,6 +167,30 @@ export class StorageService {
   async deleteObject(key: string): Promise<void> {
     await this.internalClient.send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+  }
+
+  async putObject(
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    await this.internalClient.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+  }
+
+  /** Signed against the internal endpoint, for in-network consumers such as the worker (ffmpeg). */
+  presignInternalGetObject(key: string): Promise<string> {
+    return getSignedUrl(
+      this.internalClient,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      { expiresIn: this.expiresIn },
     );
   }
 

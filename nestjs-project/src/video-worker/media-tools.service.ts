@@ -148,7 +148,9 @@ export class MediaToolsService {
             ? resolve({ stdout: Buffer.concat(out), stderr })
             : reject(
                 new MediaProcessingError(
-                  `${command} exited with code ${code}: ${stderr.trim()}`,
+                  `${command} exited with code ${code}: ${stderr
+                    .replace(/https?:\/\/\S+/g, '<url>')
+                    .trim()}`,
                 ),
               ),
         ),
