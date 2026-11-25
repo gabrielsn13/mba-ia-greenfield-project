@@ -1,5 +1,7 @@
+import { getQueueToken } from '@nestjs/bullmq';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { Queue } from 'bullmq';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
@@ -9,6 +11,7 @@ import { AuthService } from '../src/auth/auth.service';
 import { DomainExceptionFilter } from '../src/common/filters/domain-exception.filter';
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
 import { StorageService } from '../src/storage/storage.service';
+import { VIDEO_PROCESSING_QUEUE } from '../src/videos/video-queue.constants';
 import { Video } from '../src/videos/entities/video.entity';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 
@@ -16,6 +19,7 @@ describe('Videos upload (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let storage: StorageService;
+  let queue: Queue;
   let throttlerStorage: ThrottlerStorageService;
   const originalPublicEndpoint = process.env.S3_PUBLIC_ENDPOINT;
 
@@ -42,11 +46,13 @@ describe('Videos upload (e2e)', () => {
 
     dataSource = moduleFixture.get(DataSource);
     storage = moduleFixture.get(StorageService);
+    queue = moduleFixture.get(getQueueToken(VIDEO_PROCESSING_QUEUE));
     throttlerStorage =
       moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
   });
 
   afterAll(async () => {
+    await queue.obliterate({ force: true });
     await app.close();
     if (originalPublicEndpoint === undefined) {
       delete process.env.S3_PUBLIC_ENDPOINT;
@@ -219,6 +225,101 @@ describe('Videos upload (e2e)', () => {
         expect(res.status).toBe(404);
         expect(res.body.error).toBe('VIDEO_NOT_FOUND');
       }
+    });
+  });
+
+  describe('POST /videos/:id/uploads/complete', () => {
+    async function uploadPart(
+      token: string,
+      videoId: string,
+      bytes: number,
+    ): Promise<string> {
+      const sign = await request(app.getHttpServer())
+        .post(`/videos/${videoId}/uploads/parts/sign`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ partNumbers: [1] })
+        .expect(200);
+      const put = await fetch(sign.body.urls[0].url as string, {
+        method: 'PUT',
+        body: new Blob([new Uint8Array(new ArrayBuffer(bytes))]),
+      });
+      expect(put.status).toBe(200);
+      await put.arrayBuffer();
+      return put.headers.get('etag') as string;
+    }
+
+    it('returns 202, marks the video processing and enqueues one job', async () => {
+      const token = await registerAndLogin('owner@example.com');
+      const { videoId } = await initiate(token, 1024);
+      const etag = await uploadPart(token, videoId, 1024);
+
+      const res = await request(app.getHttpServer())
+        .post(`/videos/${videoId}/uploads/complete`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ parts: [{ partNumber: 1, etag }] })
+        .expect(202);
+
+      expect(res.body).toEqual({
+        id: videoId,
+        slug: expect.any(String),
+        status: 'processing',
+      });
+      const video = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: videoId });
+      expect(video.status).toBe('processing');
+      expect((await queue.getJob(videoId))?.data).toEqual({ videoId });
+
+      const again = await request(app.getHttpServer())
+        .post(`/videos/${videoId}/uploads/complete`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ parts: [{ partNumber: 1, etag }] })
+        .expect(409);
+      expect(again.body.error).toBe('INVALID_VIDEO_STATE');
+    });
+
+    it('returns 422 UPLOAD_INCOMPLETE and keeps the draft on size mismatch', async () => {
+      const token = await registerAndLogin('owner@example.com');
+      const { videoId } = await initiate(token, 2048);
+      const etag = await uploadPart(token, videoId, 1024);
+
+      const res = await request(app.getHttpServer())
+        .post(`/videos/${videoId}/uploads/complete`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ parts: [{ partNumber: 1, etag }] })
+        .expect(422);
+
+      expect(res.body.error).toBe('UPLOAD_INCOMPLETE');
+      const video = await dataSource
+        .getRepository(Video)
+        .findOneByOrFail({ id: videoId });
+      expect(video.status).toBe('draft');
+    });
+
+    it('rejects anonymous, invalid body and non-owner', async () => {
+      const owner = await registerAndLogin('owner@example.com');
+      const other = await registerAndLogin('other@example.com');
+      const { videoId } = await initiate(owner, 1024);
+      const path = `/videos/${videoId}/uploads/complete`;
+
+      await request(app.getHttpServer())
+        .post(path)
+        .send({ parts: [] })
+        .expect(401);
+
+      const invalid = await request(app.getHttpServer())
+        .post(path)
+        .set('Authorization', `Bearer ${owner}`)
+        .send({ parts: [] })
+        .expect(400);
+      expect(invalid.body.error).toBe('VALIDATION_ERROR');
+
+      const notOwner = await request(app.getHttpServer())
+        .post(path)
+        .set('Authorization', `Bearer ${other}`)
+        .send({ parts: [{ partNumber: 1, etag: 'x' }] })
+        .expect(404);
+      expect(notOwner.body.error).toBe('VIDEO_NOT_FOUND');
     });
   });
 

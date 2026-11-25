@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/14 completed
+**SIs:** 8/14 completed
 
 ### SI-03.1 — Dependências, namespaces de config e variáveis de ambiente
 - **Status:** completed
@@ -62,9 +62,14 @@
 - **Observations:** `VideosController` com 4 endpoints (initiate, sign, list parts, abort); DTOs `InitiateUploadDto`/`SignPartsDto`. `contentType` video/* validado no service (415), não no DTO. Lint do e2e segue o mesmo padrão dos e2e existentes (pendência já adiada).
 
 ### SI-03.8 — Conclusão do upload e enfileiramento (complete)
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 31 passing em src/videos (5 unit novos de `completeUpload`, 3 integração com Postgres + MinIO + Redis reais); 9 e2e em test/videos-upload.e2e-spec.ts; tsc exit 0; eslint limpo em src/videos
+- **Observations:**
+  - `POST /videos/:id/uploads/complete` (202): completa o multipart, confere `contentLength` com `size_bytes` (senão 422 `UPLOAD_INCOMPLETE`), transiciona `draft → processing` numa transação com guard de status e só então enfileira (`jobId = videoId`, attempts 3, backoff exponencial 5s).
+  - Repetir o complete retorna 409 `INVALID_VIDEO_STATE`; falha ao enfileirar após o commit é recuperada pela reconciliação (SI-03.11).
+  - `bullmq` 6 exige `ioredis` (peer opcional): adicionado como dependência.
+  - Jest: `@nestjs/bullmq` e `@nestjs/bull-shared` são ESM; `transformIgnorePatterns` e `tsconfig.jest.json` (allowJs) adicionados em package.json e test/jest-e2e.json.
+  - Lint do e2e segue a pendência já adiada (`any` do supertest).
 
 ### SI-03.9 — Ferramentas de mídia do worker (ffprobe/ffmpeg)
 - **Status:** pending

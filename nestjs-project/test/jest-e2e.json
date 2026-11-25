@@ -4,7 +4,8 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "<rootDir>/../tsconfig.jest.json" }]
   },
+  "transformIgnorePatterns": ["/node_modules/(?!@nestjs/(bullmq|bull-shared))"],
   "setupFiles": ["dotenv/config"]
 }
