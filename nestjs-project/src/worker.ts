@@ -1,8 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { WorkerRootModule } from './video-worker/worker-root.module';
 
 async function bootstrap() {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const app = await NestFactory.createApplicationContext(WorkerRootModule);
   app.enableShutdownHooks();
 }
 
