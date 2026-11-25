@@ -18,7 +18,7 @@ const MAX_SIZE = 10_000_000_000;
 describe('VideosService', () => {
   let service: VideosService;
   let videoRepository: jest.Mocked<
-    Pick<Repository<Video>, 'create' | 'save' | 'update' | 'delete'>
+    Pick<Repository<Video>, 'create' | 'save' | 'update' | 'delete' | 'findOne'>
   > & { createQueryBuilder: jest.Mock };
   let channelRepository: { findOne: jest.Mock };
   let storage: jest.Mocked<
@@ -30,15 +30,18 @@ describe('VideosService', () => {
       | 'abortMultipartUpload'
       | 'completeMultipartUpload'
       | 'headObject'
+      | 'presignGetObject'
     >
   >;
   let queue: { add: jest.Mock };
   let manager: { update: jest.Mock };
   let events: string[];
   let ownedVideo: Video | null;
+  let viewedVideo: Video | null;
 
   beforeEach(() => {
     ownedVideo = null;
+    viewedVideo = null;
     events = [];
     manager = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
     queue = {
@@ -58,6 +61,7 @@ describe('VideosService', () => {
       save: jest.fn((data) => Promise.resolve(data as Video)),
       update: jest.fn(),
       delete: jest.fn(),
+      findOne: jest.fn(() => Promise.resolve(viewedVideo)),
       createQueryBuilder: jest.fn(() => {
         const qb = {
           innerJoin: () => qb,
@@ -78,6 +82,9 @@ describe('VideosService', () => {
       abortMultipartUpload: jest.fn(),
       completeMultipartUpload: jest.fn(),
       headObject: jest.fn(),
+      presignGetObject: jest.fn((key: string) =>
+        Promise.resolve(`https://signed/${key}`),
+      ),
     };
     service = new VideosService(
       videoRepository as unknown as Repository<Video>,
@@ -100,6 +107,91 @@ describe('VideosService', () => {
       size_bytes: PART_SIZE * 2 + 1,
       ...overrides,
     }) as Video;
+
+  describe('viewer rules (slug access)', () => {
+    const video = (status: VideoStatus): Video =>
+      ({
+        id: 'v1',
+        slug: 'slug0000001',
+        title: 'T',
+        status,
+        content_type: 'video/mp4',
+        size_bytes: '10' as unknown as number,
+        duration_seconds: 5,
+        metadata: { a: 1 },
+        thumbnail_key: 'videos/v1/thumbnail.jpg',
+        source_key: 'videos/v1/source',
+        created_at: new Date(),
+        channel: { user_id: 'owner' },
+      }) as unknown as Video;
+
+    it('lets anonymous viewers see ready videos', async () => {
+      viewedVideo = video(VideoStatus.READY);
+
+      const details = await service.getVideoDetails('slug0000001');
+
+      expect(details.status).toBe(VideoStatus.READY);
+      expect(details.sizeBytes).toBe(10);
+      expect(details.thumbnailUrl).toBe(
+        'https://signed/videos/v1/thumbnail.jpg',
+      );
+    });
+
+    it.each([VideoStatus.DRAFT, VideoStatus.PROCESSING, VideoStatus.ERROR])(
+      'hides %s videos from anonymous and non-owner viewers',
+      async (status) => {
+        viewedVideo = video(status);
+
+        await expect(service.getVideoDetails('slug0000001')).rejects.toThrow(
+          VideoNotFoundException,
+        );
+        await expect(
+          service.getStreamUrl('slug0000001', 'someone-else'),
+        ).rejects.toThrow(VideoNotFoundException);
+        await expect(service.getDownloadUrl('slug0000001')).rejects.toThrow(
+          VideoNotFoundException,
+        );
+      },
+    );
+
+    it('lets the owner see any status', async () => {
+      viewedVideo = video(VideoStatus.PROCESSING);
+
+      const details = await service.getVideoDetails('slug0000001', 'owner');
+
+      expect(details.status).toBe(VideoStatus.PROCESSING);
+    });
+
+    it('throws when the slug does not exist', async () => {
+      viewedVideo = null;
+
+      await expect(service.getVideoDetails('missing')).rejects.toThrow(
+        VideoNotFoundException,
+      );
+    });
+
+    it('does not stream or download an owner draft (no stored object yet)', async () => {
+      viewedVideo = video(VideoStatus.DRAFT);
+
+      await expect(
+        service.getStreamUrl('slug0000001', 'owner'),
+      ).rejects.toThrow(VideoNotFoundException);
+    });
+
+    it('signs the source for streaming and as an attachment for download', async () => {
+      viewedVideo = video(VideoStatus.READY);
+
+      await expect(service.getStreamUrl('slug0000001')).resolves.toBe(
+        'https://signed/videos/v1/source',
+      );
+      await service.getDownloadUrl('slug0000001');
+
+      expect(storage.presignGetObject).toHaveBeenLastCalledWith(
+        'videos/v1/source',
+        { contentDisposition: 'attachment; filename="slug0000001.mp4"' },
+      );
+    });
+  });
 
   describe('initiateUpload', () => {
     const input = {

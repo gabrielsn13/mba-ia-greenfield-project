@@ -1,7 +1,7 @@
 # phase-03-videos â€” Progress
 
 **Status:** in_progress
-**SIs:** 11/14 completed
+**SIs:** 12/14 completed
 
 ### SI-03.1 â€” DependÃªncias, namespaces de config e variÃ¡veis de ambiente
 - **Status:** completed
@@ -99,9 +99,12 @@
   - Idempotência via `jobId = videoId`; um job `failed` retido (removeOnFail) é removido antes do `add`, pois senão o `add` seria no-op.
 
 ### SI-03.12 â€” Consulta, streaming e download
-- **Status:** pending
-- **Tests:** pending
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 30 unit passing (videos.service.spec com regras de visualizacao + jwt-auth.guard.spec) + 10 e2e passing com MinIO/Postgres reais (stream 302 + Range 206, download attachment, 404 anonimo para draft/processing/error, dono ve qualquer status, outro usuario, token invalido tratado como anonimo, metadados publicos, slug inexistente); tsc exit 0; eslint limpo
+- **Observations:**
+  - Novo decorator `@OptionalAuth()` e suporte no `JwtAuthGuard`: token ausente/invalido segue como anonimo; token valido popula `request.user`.
+  - `GET /videos/:slug` expoe so `ready` a nao-donos; o dono ve qualquer status. Stream/download tambem escondem `draft` (ainda nao ha objeto).
+  - Stream e download respondem 302 para URL pre-assinada do MinIO (Range/206 servido pelo storage); o nome do arquivo no download e derivado de slug + content-type.
 
 ### SI-03.13 â€” Fluxo end-to-end com infraestrutura real
 - **Status:** pending

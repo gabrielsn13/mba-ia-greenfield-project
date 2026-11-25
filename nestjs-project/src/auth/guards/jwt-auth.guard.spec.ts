@@ -66,6 +66,34 @@ describe('JwtAuthGuard', () => {
     );
   });
 
+  it('on @OptionalAuth() routes attaches the user when the token is valid', async () => {
+    mockReflector.getAllAndOverride.mockImplementation(
+      (key: string) => key === 'isOptionalAuth',
+    );
+    const token = jwtService.sign({ sub: 'user-1', email: 'a@example.com' });
+    const request: Record<string, unknown> = {
+      headers: { authorization: `Bearer ${token}` },
+    };
+
+    await expect(guard.canActivate(makeContext(request))).resolves.toBe(true);
+    expect((request.user as Record<string, unknown>)?.sub).toBe('user-1');
+  });
+
+  it('on @OptionalAuth() routes treats missing or invalid tokens as anonymous', async () => {
+    mockReflector.getAllAndOverride.mockImplementation(
+      (key: string) => key === 'isOptionalAuth',
+    );
+    const missing: Record<string, unknown> = { headers: {} };
+    const invalid: Record<string, unknown> = {
+      headers: { authorization: 'Bearer not-a-valid-jwt' },
+    };
+
+    await expect(guard.canActivate(makeContext(missing))).resolves.toBe(true);
+    await expect(guard.canActivate(makeContext(invalid))).resolves.toBe(true);
+    expect(missing.user).toBeUndefined();
+    expect(invalid.user).toBeUndefined();
+  });
+
   it('throws UnauthorizedException when Authorization header is missing', async () => {
     const ctx = makeContext({ headers: {} });
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);

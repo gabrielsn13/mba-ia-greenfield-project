@@ -56,6 +56,31 @@ export interface SignedPartUrl {
   url: string;
 }
 
+export interface VideoDetails {
+  id: string;
+  slug: string;
+  title: string;
+  status: VideoStatus;
+  contentType: string;
+  sizeBytes: number;
+  durationSeconds: number | null;
+  metadata: Record<string, unknown> | null;
+  thumbnailUrl: string | null;
+  createdAt: Date;
+}
+
+const EXTENSION_BY_CONTENT_TYPE: Record<string, string> = {
+  'video/quicktime': 'mov',
+  'video/x-matroska': 'mkv',
+  'video/x-msvideo': 'avi',
+};
+
+function extensionFor(contentType: string): string {
+  return (
+    EXTENSION_BY_CONTENT_TYPE[contentType] ?? contentType.split('/')[1] ?? 'mp4'
+  );
+}
+
 function isSlugConflict(err: unknown): boolean {
   if (!(err instanceof QueryFailedError)) return false;
   const driverError = err.driverError as { code?: string; detail?: string };
@@ -222,6 +247,62 @@ export class VideosService {
       slug: video.slug,
       status: VideoStatus.PROCESSING,
     };
+  }
+
+  async getVideoDetails(slug: string, userId?: string): Promise<VideoDetails> {
+    const video = await this.findBySlugForViewer(slug, userId);
+    const thumbnailUrl = video.thumbnail_key
+      ? await this.storageService.presignGetObject(video.thumbnail_key)
+      : null;
+    return {
+      id: video.id,
+      slug: video.slug,
+      title: video.title,
+      status: video.status,
+      contentType: video.content_type,
+      sizeBytes: Number(video.size_bytes),
+      durationSeconds: video.duration_seconds,
+      metadata: video.metadata,
+      thumbnailUrl,
+      createdAt: video.created_at,
+    };
+  }
+
+  async getStreamUrl(slug: string, userId?: string): Promise<string> {
+    const video = await this.findPlayableForViewer(slug, userId);
+    return this.storageService.presignGetObject(video.source_key);
+  }
+
+  async getDownloadUrl(slug: string, userId?: string): Promise<string> {
+    const video = await this.findPlayableForViewer(slug, userId);
+    return this.storageService.presignGetObject(video.source_key, {
+      contentDisposition: `attachment; filename="${video.slug}.${extensionFor(video.content_type)}"`,
+    });
+  }
+
+  // The owner sees any status; everyone else only sees ready videos.
+  async findBySlugForViewer(slug: string, userId?: string): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { slug },
+      relations: { channel: true },
+    });
+    const isOwner = !!userId && video?.channel.user_id === userId;
+    if (!video || (!isOwner && video.status !== VideoStatus.READY)) {
+      throw new VideoNotFoundException();
+    }
+    return video;
+  }
+
+  // A draft has no stored object yet, so there is nothing to stream or download.
+  private async findPlayableForViewer(
+    slug: string,
+    userId?: string,
+  ): Promise<Video> {
+    const video = await this.findBySlugForViewer(slug, userId);
+    if (video.status === VideoStatus.DRAFT) {
+      throw new VideoNotFoundException();
+    }
+    return video;
   }
 
   async findOwnedVideo(userId: string, videoId: string): Promise<Video> {
