@@ -105,3 +105,9 @@ Skip documentation lookup only for trivial operations such as:
 
 If a library is involved and there is uncertainty, documentation lookup is mandatory.
 If the documentation returned does not match the installed version, flag the discrepancy before proceeding.
+
+## Videos (Phase 03)
+
+Phase 03 adds video upload and processing. Containers added to Compose: `minio` (S3-compatible storage, bucket `videos`), `redis` (BullMQ queue `video-processing`) and `video-worker` (consumes the queue, runs ffprobe/ffmpeg for metadata and thumbnail). The API never receives the video file: clients upload multipart parts straight to MinIO using presigned URLs, then call `POST /videos/:id/uploads/complete`, which sets the video to `processing` and enqueues the job. Status lifecycle: `draft` → `processing` → `ready` | `error`. Streaming and download are 302 redirects to presigned URLs (Range/206 served by MinIO); each video has a unique slug used in `/videos/:slug`.
+
+Full module, endpoint, config and test reference: `nestjs-project/CLAUDE.md` → "Videos (Phase 03)". Plan: `docs/phases/phase-03-videos/`.

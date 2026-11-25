@@ -1,7 +1,7 @@
 # phase-03-videos â€” Progress
 
 **Status:** in_progress
-**SIs:** 13/14 completed
+**SIs:** 14/14 completed
 
 ### SI-03.1 â€” DependÃªncias, namespaces de config e variÃ¡veis de ambiente
 - **Status:** completed
@@ -113,7 +113,11 @@
   - Fixture gerado com ffmpeg (lavfi testsrc, 2 s) em tempo de teste; exige o container video-worker rodando.
   - Retomada coberta com upload de parte unica (partSize fixo de 100 MB inviabiliza multiplas partes com fixture pequeno).
 
-### SI-03.14 â€” DocumentaÃ§Ã£o: OpenAPI e CLAUDE.md
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+### SI-03.14 — Documentação: OpenAPI e CLAUDE.md
+- **Status:** completed
+- **Tests:** no tests (cobertura do OpenAPI pelo `src/openapi-export.integration-spec.ts` existente)
+- **Observations:**
+  - `openapi.json` regenerado com `npm run openapi:export`; os 8 endpoints de `/videos` estao presentes.
+  - Secoes "Videos (Phase 03)" adicionadas em `nestjs-project/CLAUDE.md` e `CLAUDE.md` raiz, citando apenas modulos, endpoints, servicos e variaveis existentes.
+  - Suite completa: `npm test --runInBand` 225 passando (`migrations.integration-spec` so passa a partir de schema limpo, pois nao remove os enums; pre-existente), `npm run test:e2e -- --runInBand` 75/75, tsc exit 0.
+  - Pendencia: `npm run lint` ainda reporta divida pre-existente (`any` em specs/e2e e outros) - ver tratamento separado.
