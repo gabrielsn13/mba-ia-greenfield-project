@@ -120,4 +120,5 @@
   - `openapi.json` regenerado com `npm run openapi:export`; os 8 endpoints de `/videos` estao presentes.
   - Secoes "Videos (Phase 03)" adicionadas em `nestjs-project/CLAUDE.md` e `CLAUDE.md` raiz, citando apenas modulos, endpoints, servicos e variaveis existentes.
   - Suite completa: `npm test --runInBand` 225 passando (`migrations.integration-spec` so passa a partir de schema limpo, pois nao remove os enums; pre-existente), `npm run test:e2e -- --runInBand` 75/75, tsc exit 0.
-  - Pendencia: `npm run lint` ainda reporta divida pre-existente (`any` em specs/e2e e outros) - ver tratamento separado.
+  - Lint: a divida pre-existente (`any` em specs/e2e e outros) foi tratada em PR separado (#20): codigo de `src` corrigido e, para arquivos de teste (`*.spec.ts`, `*.integration-spec.ts`, `*.e2e-spec.ts`), um override em `nestjs-project/eslint.config.mjs` desliga `no-unsafe-member-access`, `no-unsafe-assignment`, `no-unsafe-return`, `no-unsafe-call`, `unbound-method` e `require-await` (ruido do supertest/jest). Resultado: `npm run lint` com 0 erros e 40 warnings pre-existentes (majoritariamente `no-unsafe-argument`).
+  - Verificacao final na `dev`: `npm test --runInBand` 227/227 (schema limpo), `npm run test:e2e --runInBand` 75/75, `npx tsc --noEmit` exit 0.
