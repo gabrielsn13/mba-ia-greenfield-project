@@ -17,6 +17,8 @@ const MANAGED_TABLES = [
   'videos',
 ];
 
+const MANAGED_ENUMS = ['verification_tokens_type_enum', 'videos_status_enum'];
+
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
 
@@ -35,12 +37,14 @@ describe('Database migrations (integration)', () => {
 
     await dataSource.initialize();
 
-    await Promise.all([
-      ...MANAGED_TABLES.map((table) =>
-        dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
-      ),
-      dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
-    ]);
+    // Sequential on purpose: parallel DROP ... CASCADE on FK-linked tables deadlocks.
+    for (const table of MANAGED_TABLES) {
+      await dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+    }
+    await dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`);
+    for (const enumType of MANAGED_ENUMS) {
+      await dataSource.query(`DROP TYPE IF EXISTS "${enumType}" CASCADE`);
+    }
   });
 
   afterAll(async () => {
