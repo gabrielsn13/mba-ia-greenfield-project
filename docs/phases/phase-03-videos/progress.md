@@ -26,7 +26,7 @@
 - **Observations:**
   - Colunas `size_bytes` (bigint) e `duration_seconds` (numeric) usam transformers para `number`.
   - `cleanAllTables` apaga `videos` apenas se a tabela existir (`to_regclass`).
-  - `migrations.integration-spec.ts` nÃ£o remove enums; se sobrar `videos_status_enum`, resetar o schema antes.
+  - `migrations.integration-spec.ts` remove tabelas e enums (`videos_status_enum`, `verification_tokens_type_enum`) no `beforeAll`, em sequência (corrigido no PR #24).
   - O erro de lint em `create-test-data-source.ts` (tipo `Function`) Ã© prÃ©-existente.
 
 ### SI-03.4 â€” ExceÃ§Ãµes de domÃ­nio e gerador de slug
@@ -119,6 +119,6 @@
 - **Observations:**
   - `openapi.json` regenerado com `npm run openapi:export`; os 8 endpoints de `/videos` estao presentes.
   - Secoes "Videos (Phase 03)" adicionadas em `nestjs-project/CLAUDE.md` e `CLAUDE.md` raiz, citando apenas modulos, endpoints, servicos e variaveis existentes.
-  - Suite completa: `npm test --runInBand` 225 passando (`migrations.integration-spec` so passa a partir de schema limpo, pois nao remove os enums; pre-existente), `npm run test:e2e -- --runInBand` 75/75, tsc exit 0.
+  - Suite completa: `npm test` (agora `jest --runInBand`, PR #25) 227 passando; `migrations.integration-spec` limpa tabelas e enums sozinha (PR #24); `npm run test:e2e -- --runInBand` 75/75, tsc exit 0.
   - Lint: a divida pre-existente (`any` em specs/e2e e outros) foi tratada em PR separado (#20): codigo de `src` corrigido e, para arquivos de teste (`*.spec.ts`, `*.integration-spec.ts`, `*.e2e-spec.ts`), um override em `nestjs-project/eslint.config.mjs` desliga `no-unsafe-member-access`, `no-unsafe-assignment`, `no-unsafe-return`, `no-unsafe-call`, `unbound-method` e `require-await` (ruido do supertest/jest). Resultado: `npm run lint` com 0 erros e 40 warnings pre-existentes (majoritariamente `no-unsafe-argument`).
   - Verificacao final na `dev`: `npm test --runInBand` 227/227 (schema limpo), `npm run test:e2e --runInBand` 75/75, `npx tsc --noEmit` exit 0.
